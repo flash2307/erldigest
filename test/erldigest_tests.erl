@@ -3,7 +3,7 @@
 
 rfc_2617_http_example_test() ->
   meck:new(erldigest_nonce_generator, [passthrough, unstick, nolink]),
-  meck:expect(erldigest_nonce_generator, generate_nonce, 0, {<<"00000001">>, <<"0a4f113b">>}),
+  meck:expect(erldigest_nonce_generator, generate, 0, {<<"00000001">>, <<"0a4f113b">>}),
   Challenge = <<"Digest realm=\"testrealm@host.com\", ",
                         "qop=\"auth,auth-int\", ",
                         "nonce=\"dcd98b7102dd2f0e8b11d0f600bfb0c093\", ",
@@ -23,7 +23,7 @@ rfc_2617_http_example_test() ->
 
 another_http_example_test() ->
   meck:new(erldigest_nonce_generator, [passthrough, unstick, nolink]),
-  meck:expect(erldigest_nonce_generator, generate_nonce, 0, {<<"00000001">>, <<"61417766e50cb980">>}),
+  meck:expect(erldigest_nonce_generator, generate, 0, {<<"00000001">>, <<"61417766e50cb980">>}),
   Challenge = <<"Digest realm=\"test.dev\", ",
                         "qop=\"auth\", ",
                         "nonce=\"064af982c5b571cea6450d8eda91c20d\", ",
@@ -43,7 +43,7 @@ another_http_example_test() ->
 
 another_http_example_again_test() ->
   meck:new(erldigest_nonce_generator, [passthrough, unstick, nolink]),
-  meck:expect(erldigest_nonce_generator, generate_nonce, 0, {<<"00000001">>, <<"86859d0e047b826eb82a0463270916e7">>}),
+  meck:expect(erldigest_nonce_generator, generate, 0, {<<"00000001">>, <<"86859d0e047b826eb82a0463270916e7">>}),
   Challenge = <<"Digest realm=\"Login to 2J0085BFAG00007\",",
                         "qop=\"auth\",",
                         "nonce=\"Z2VuZXRlYy1kaWdlc3Q6NDMwNTM5ODAwMjA=\",",

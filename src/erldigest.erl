@@ -3,11 +3,10 @@
 -export([calculate_response/5]).
 
 calculate_response(Method, Uri, Headers, Username, Password) ->
-  BinaryMethod = method_to_binary(Method),
   {ok, Options} = erldigest_encoder:decode_challenge_headers(Headers),
   NewOptions = Options#{username => Username,
                         password => Password,
-                        method => BinaryMethod,
+                        method => method_to_binary(Method),
                         uri => Uri},
   Algorithm = erldigest_utils:get_digest_algorithm(Options),
   Response = calculate_request_digest(NewOptions, Algorithm),
@@ -19,7 +18,7 @@ method_to_binary(Method) ->
 calculate_request_digest(#{qop := Qop, nonce := Nonce} = Options, Algorithm) ->
   HA1 = get_A1_hash(Options, Algorithm),
   HA2 = get_A2_hash(Options, Algorithm),
-  {NonceCount, CNonce} = erldigest_nonce_generator:generate_nonce(),
+  {NonceCount, CNonce} = erldigest_nonce_generator:generate(),
   NewQop =
     case Qop of
       <<"auth,auth-int">> -> <<"auth">>;

@@ -1,19 +1,34 @@
--module(erldigest_encoder).
+-module(erldigest_challenge).
 
--export([decode_challenge/1,
-         encode_response/1]).
+-export([parse/1,
+         make_challenge/1,
+         get_value/2]).
 
 %%%===================================================================
-%%% Decoding
+%%% API
 %%%===================================================================
 
-decode_challenge(<<"Digest ", Challenge/binary>>) ->
+parse(<<"Digest ", Challenge/binary>>) ->
   Regex = <<"([^=]+)=((?:[^\"]*)|(?:\"[^\"]*\"))(?:\\s*,\\s*|\\s*$)">>,
   {match, Captures} = re:run(Challenge,  Regex, [global]),
   Fields = extract_fields(Captures, Challenge),
   {ok, Fields};
-decode_challenge(_) ->
+parse(_) ->
   {error, invalid_challenge}.
+
+make_challenge(Options) ->
+  Fields = make_challenge_fields(Options),
+  {ok, <<"Digest ", Fields/binary>>}.
+
+-spec get_value(Name::atom(), Challenge::binary()) -> {ok, Value::binary()}.
+get_value(Name, Challenge) ->
+  ParsedChallenge = erldigest_challenge:parse(Challenge),
+  maps:get(Name, ParsedChallenge).
+
+
+%%%===================================================================
+%%% Internal Functions
+%%%===================================================================
 
 extract_fields(Captures, Challenge) ->
   extract_fields(Captures, Challenge, #{}).
@@ -41,27 +56,19 @@ get_atom_key(BinaryKey) ->
     <<"nc">> -> nc
   end.
 
-%%%===================================================================
-%%% Encoding
-%%%===================================================================
-
-encode_response(Options) ->
-  Fields = encode_response_fields(Options),
-  {ok, <<"Digest ", Fields/binary>>}.
-
-encode_response_fields(Options) ->
+make_challenge_fields(Options) ->
   Keys = [username, realm, nonce, uri, response, algorithm, cnonce, opaque, qop, nc],
   Fields = lists:foldl(fun(Key, Acc) ->
                          BinaryKey = atom_to_binary(Key, latin1),
                          Value = maps:get(Key, Options, <<>>),
-                         Field = encode_response_field(BinaryKey, Value),
+                         Field = make_challenge_field(BinaryKey, Value),
                          <<Acc/binary, Field/binary>>
                        end, <<>>, Keys),
   binary:part(Fields, 0, byte_size(Fields)-1).
 
-encode_response_field(_, <<>>) ->
+make_challenge_field(_, <<>>) ->
   <<>>;
-encode_response_field(<<"nc">>, NonceCount) ->
+make_challenge_field(<<"nc">>, NonceCount) ->
   <<"nc=", NonceCount/binary, ",">>;
-encode_response_field(Key, Value) ->
+make_challenge_field(Key, Value) ->
   <<Key/binary, "=\"", Value/binary, "\",">>.

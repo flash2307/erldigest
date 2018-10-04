@@ -1,46 +1,71 @@
 -module(erldigest_challenge).
 
+-type challenge() :: #{atom() => binary()}.
+
 -export([parse/1,
          make_challenge/1,
-         get_value/2]).
+         get_value/2,
+         get_value/3]).
+
+-export_type([challenge/0]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+-spec parse(Challenge::binary()) -> {ok, challenge()} | {error, Reason::atom()}.
 parse(<<"Digest ", Challenge/binary>>) ->
   Regex = <<"([^=]+)=((?:[^\"]*)|(?:\"[^\"]*\"))(?:\\s*,\\s*|\\s*$)">>,
-  {match, Captures} = re:run(Challenge,  Regex, [global]),
-  Fields = extract_fields(Captures, Challenge),
-  {ok, Fields};
+  case re:run(Challenge,  Regex, [global]) of
+    {match, Captures} -> extract_fields(Captures, Challenge);
+    nomatch -> {error, badarg}
+  end;
 parse(_) ->
-  {error, invalid_challenge}.
+  {error, badarg}.
 
-make_challenge(Options) ->
-  Fields = make_challenge_fields(Options),
-  {ok, <<"Digest ", Fields/binary>>}.
+-spec make_challenge(Challenge::challenge()) -> {ok, binary()} | {error, Reason::atom()}.
+make_challenge(Challenge) when is_map(Challenge) ->
+  Fields = make_challenge_fields(Challenge),
+  {ok, <<"Digest ", Fields/binary>>};
+make_challenge(_) ->
+  {error, badarg}.
 
--spec get_value(Name::atom(), Challenge::binary()) -> {ok, Value::binary()}.
-get_value(Name, Challenge) ->
+-spec get_value(Name::atom(), Challenge::binary() | map()) -> {ok, Value::binary()} | {error, Reason::atom()}.
+get_value(Name, Challenge) when is_binary(Challenge) ->
   ParsedChallenge = erldigest_challenge:parse(Challenge),
-  maps:get(Name, ParsedChallenge).
+  maps:get(Name, ParsedChallenge);
+get_value(Name, Challenge) when is_map(Challenge) ->
+  maps:get(Name, Challenge);
+get_value(_, _) ->
+  {error, badarg}.
 
+-spec get_value(Name::atom(), Challenge::binary() | map(), Default::binary()) -> {ok, Value::binary()} | {error, Reason::atom()}.
+get_value(Name, Challenge, Default) ->
+  try get_value(Name, Challenge) of
+    Value -> Value
+  catch
+    error:{badkey, Name} -> Default
+  end.
 
 %%%===================================================================
 %%% Internal Functions
 %%%===================================================================
 
 extract_fields(Captures, Challenge) ->
-  extract_fields(Captures, Challenge, #{}).
+  try extract_fields(Captures, Challenge, #{}) of
+    Fields -> {ok, Fields}
+  catch
+    error:Reason -> {error, Reason}
+  end.
 extract_fields([Head | Tail], Challenge, Fields) ->
   [_, {KeyBegin, KeyLength}, {ValueBegin, ValueLength}] = Head,
-  Key = get_atom_key(binary:part(Challenge, KeyBegin, KeyLength)),
+  Key = get_field_name_atom(binary:part(Challenge, KeyBegin, KeyLength)),
   Value = erldigest_utils:remove_surrounding_quotes(binary:part(Challenge, ValueBegin, ValueLength)),
   extract_fields(Tail, Challenge, Fields#{Key => Value});
 extract_fields([], _, Fields) ->
   Fields.
 
-get_atom_key(BinaryKey) ->
+get_field_name_atom(BinaryKey) ->
   case BinaryKey of
     <<"realm">> -> realm;
     <<"domain">> -> domain;

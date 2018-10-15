@@ -2,7 +2,8 @@
 
 -export([calculate_response/5,
          validate_response/5,
-         generate_challenge/2]).
+         generate_challenge/2,
+         get_A1_hash/2]).
 
 -type method() :: atom() | binary() | string().
 -type qop() :: none | auth | auth_int | both.
@@ -65,6 +66,21 @@ generate_challenge(Realm, Qop) ->
                            QopLine/binary>>,
   {ok, binary:part(Challenge, 0, byte_size(Challenge)-1)}.
 
+-spec get_A1_hash(Options, Algorithm) -> Result when
+  Options :: map(),
+  Algorithm :: atom(),
+  Result :: binary().
+get_A1_hash(#{algorithm := <<"MD5-sess">>, realm := Realm, nonce := Nonce, cnonce := CNonce, username := Username, password := Password}, Algorithm) ->
+  InnerA1 = <<Username/binary, ":", Realm/binary, ":", Password/binary>>,
+  A1 = <<(hex_digest(InnerA1, Algorithm))/binary, ":", Nonce/binary, ":", CNonce/binary>>,
+  hex_digest(A1, Algorithm);
+get_A1_hash(#{algorithm := <<"MD5">>, realm := Realm, username := Username, password := Password}, Algorithm) ->
+  A1 = <<Username/binary, ":", Realm/binary, ":", Password/binary>>,
+  hex_digest(A1, Algorithm);
+get_A1_hash(#{realm := Realm, username := Username, password := Password}, Algorithm) ->
+  A1 = <<Username/binary, ":", Realm/binary, ":", Password/binary>>,
+  hex_digest(A1, Algorithm).
+
 %%%===================================================================
 %%% Internal Functions
 %%%===================================================================
@@ -93,17 +109,6 @@ calculate_response_digest(#{nonce := Nonce, ha1 := HA1} = Options, Algorithm) ->
   HA2 = get_A2_hash(Options, Algorithm),
   Digest = hex_digest(<<HA1/binary, ":", Nonce/binary, ":", HA2/binary>>, Algorithm),
   Options#{response => Digest}.
-
-get_A1_hash(#{algorithm := <<"MD5-sess">>, realm := Realm, nonce := Nonce, cnonce := CNonce, username := Username, password := Password}, Algorithm) ->
-  InnerA1 = <<Username/binary, ":", Realm/binary, ":", Password/binary>>,
-  A1 = <<(hex_digest(InnerA1, Algorithm))/binary, ":", Nonce/binary, ":", CNonce/binary>>,
-  hex_digest(A1, Algorithm);
-get_A1_hash(#{algorithm := <<"MD5">>, realm := Realm, username := Username, password := Password}, Algorithm) ->
-  A1 = <<Username/binary, ":", Realm/binary, ":", Password/binary>>,
-  hex_digest(A1, Algorithm);
-get_A1_hash(#{realm := Realm, username := Username, password := Password}, Algorithm) ->
-  A1 = <<Username/binary, ":", Realm/binary, ":", Password/binary>>,
-  hex_digest(A1, Algorithm).
 
 get_A2_hash(#{qop := <<"auth-int">>, method := Method, uri := Uri, body := Body}, Algorithm) ->
   A2 = <<Method/binary, ":", Uri/binary, ":", Body/binary>>,

@@ -86,6 +86,17 @@ dahua_rtsp_test() ->
                       "response=\"f03b2c4265434c631305450403e79a54\"">>,
   erldigest_test_utils:assert_response_are_equivalent(Expected, Response).
 
+bosch_rtsp_example_test() ->
+  Challenge = <<"Digest realm=\"Use 'live' as User Name\", nonce=\"445d262b515447670e9f31e724c55f6f\", algorithm=MD5, qop=\"auth\"">>,
+  {ok, Response} = erldigest:calculate_rfc2069_response(options, <<"rtsp://10.122.17.13/rtsp_tunnel?h26x=4&line=1&inst=2">>, Challenge, <<"service">>, <<"service">>),
+  Expected = <<"Digest username=\"service\",",
+                      "algorithm=\"MD5\",",
+                      "realm=\"Use 'live' as User Name\",",
+                      "nonce=\"445d262b515447670e9f31e724c55f6f\",",
+                      "uri=\"rtsp://10.122.17.13/rtsp_tunnel?h26x=4&line=1&inst=2\",",
+                      "response=\"b3731c9ef479478ec66f594b618bb5b3\"">>,
+  erldigest_test_utils:assert_response_are_equivalent(Expected, Response).
+
 validate_good_response_test() ->
   Challenge = <<"Digest realm=\"Login to 2J0085BFAG00007\",",
                         "qop=\"auth\",",

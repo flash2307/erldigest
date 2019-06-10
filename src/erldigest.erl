@@ -1,6 +1,7 @@
 -module(erldigest).
 
 -export([calculate_response/5,
+        calculate_rfc2069_response/5,
          validate_response/5,
          generate_challenge/2,
          get_A1_hash/3,
@@ -28,7 +29,25 @@ calculate_response(Method, Uri, Headers, Username, Password) ->
                         password => Password,
                         method => method_to_binary(Method),
                         uri => Uri},
-  Algorithm = erldigest_utils:get_digest_algorithm(Options),
+  Algorithm = erldigest_utils:get_digest_algorithm(NewOptions),
+  Response = calculate_request_digest(NewOptions, Algorithm),
+  erldigest_challenge:make_challenge(Response).
+
+-spec calculate_rfc2069_response(Method, Uri, Headers, Username, Password) -> Result when
+  Method :: method(),
+  Uri :: binary(),
+  Headers :: #{binary() => binary()},
+  Username :: binary(),
+  Password :: binary(),
+  Result :: {ok, challenge()} | {error, Reason::term()}.
+calculate_rfc2069_response(Method, Uri, Headers, Username, Password) ->
+  {ok, Options} = erldigest_challenge:parse(Headers),
+  Options2 = maps:without([qop], Options),
+  NewOptions = Options2#{username => Username,
+                        password => Password,
+                        method => method_to_binary(Method),
+                        uri => Uri},
+  Algorithm = erldigest_utils:get_digest_algorithm(NewOptions),
   Response = calculate_request_digest(NewOptions, Algorithm),
   erldigest_challenge:make_challenge(Response).
 

@@ -169,13 +169,15 @@ validate_bad_qop_response_test() ->
 generate_challenge_test() ->
   meck:new(erldigest_nonce_generator, [passthrough, unstick, nolink]),
   meck:expect(erldigest_nonce_generator, generate, 0, {<<"00000001">>, <<"86859d0e047b826eb82a0463270916e7">>}),
-  {ok, Challenge} = erldigest:generate_challenge(<<"tata.com">>, auth),
+  {ok, {Challenge, Opaque}} = erldigest:generate_challenge(<<"tata.com">>, auth),
   Expected = <<"Digest realm=\"tata.com\",",
                       "nonce=\"86859d0e047b826eb82a0463270916e7\",",
                       "qop=\"auth\"">>,
+  ExpectedOpaque = #{realm => <<"tata.com">>, nonce => <<"86859d0e047b826eb82a0463270916e7">>, qop => <<"auth">>},
   meck:unload(erldigest_nonce_generator),
   io:format("~nExpected: ~p~nGot     : ~p~n", [Expected, Challenge]),
-  ?assertMatch(Expected, Challenge).
+  ?assertMatch(Expected, Challenge),
+  ?assertMatch(ExpectedOpaque, Opaque).
 
 get_A1_hash_with_default_algorithm_test() ->
   A1 = erldigest:get_A1_hash(<<"Username">>, <<"Realm">>, <<"Password">>),

@@ -1,13 +1,14 @@
 -module(erldigest_challenge).
 
 -type challenge() :: #{atom() => binary()}.
+-type opaque()    :: #{atom() => term()}.
 
 -export([parse/1,
          make_challenge/1,
          get_value/2,
          get_value/3]).
 
--export_type([challenge/0]).
+-export_type([challenge/0, opaque/0]).
 
 %%%===================================================================
 %%% API
@@ -30,7 +31,7 @@ make_challenge(Challenge) when is_map(Challenge) ->
 make_challenge(_) ->
   {error, badarg}.
 
--spec get_value(Name::atom(), Challenge::challenge()) -> {ok, Value::binary()} | {error, Reason::atom()}.
+-spec get_value(Name::atom(), Challenge :: challenge() | opaque() ) -> {ok, Value::binary()} | {error, Reason::atom()}.
 get_value(Name, Challenge) when is_atom(Name), is_map(Challenge) ->
   {ok, maps:get(Name, Challenge)};
 get_value(_, _) ->

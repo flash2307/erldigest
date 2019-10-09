@@ -10,6 +10,9 @@
 -type qop() :: none | auth | auth_int | both.
 -type algorithm() :: md5 | sha256.
 -type challenge() :: erldigest_challenge:challenge().
+-type opaque() :: erldigest_challenge:opaque().
+
+-export_type([challenge/0, opaque/0]).
 
 %%%===================================================================
 %%% API
@@ -36,15 +39,20 @@ calculate_response(Method, Uri, Headers, Username, Password) ->
   Method :: method(),
   Uri :: binary(),
   ClientResponse :: binary(),
-  ServerResponse :: binary(),
+  ServerResponse :: binary() | opaque(),
   HA1 :: binary(),
   Result :: {ok, boolean()} | {error, Reason::term()}.
-validate_response(Method, Uri, ClientResponse, ServerResponse, HA1) ->
+validate_response(Method, Uri, ClientResponse, <<ServerResponse/binary>>, HA1) ->
   {ok, Challenge} = erldigest_challenge:parse(ServerResponse),
+  #{qop := EntryServerQop} = Challenge,
+  NewChallenge = Challenge#{qop => binary:replace(EntryServerQop, <<" ">>, <<>>, [global])},
+  validate_response(Method, Uri, ClientResponse, NewChallenge, HA1);
+
+validate_response(Method, Uri, ClientResponse, ServerResponse, HA1) when is_map(ServerResponse)->
   {ok, Response} = erldigest_challenge:parse(ClientResponse),
-  Result = get_solvable_challenge(Response, Challenge#{ha1 => HA1,
-                                                       method => erldigest_utils:method_to_binary(Method),
-                                                       uri => Uri}),
+  Result = get_solvable_challenge(Response, ServerResponse#{ha1 => HA1,
+                                                            method => erldigest_utils:method_to_binary(Method),
+                                                            uri => Uri}),
   case Result of
     {ok, SolvableChallenge} ->
       Algorithm = erldigest_utils:get_digest_algorithm(SolvableChallenge),
@@ -58,15 +66,16 @@ validate_response(Method, Uri, ClientResponse, ServerResponse, HA1) ->
 -spec generate_challenge(Realm, Qop) -> Result when
   Realm :: binary(),
   Qop :: qop(),
-  Result :: {ok, binary()} | {error, Reason::term()}.
+  Result :: {ok, {binary(), Opaque :: term()}} | {error, Reason::term()}.
 generate_challenge(Realm, Qop) ->
-  RealmLine = get_realm_line(Realm),
-  NonceLine = get_nonce_line(),
-  QopLine = get_qop_line(Qop),
+  {RealmLine, Realm} = get_realm_line(Realm),
+  {NonceLine, Nonce} = get_nonce_line(),
+  {QopLine, QopBin} = get_qop_line(Qop),
   Challenge = <<"Digest ", RealmLine/binary,
                            NonceLine/binary,
                            QopLine/binary>>,
-  {ok, binary:part(Challenge, 0, byte_size(Challenge)-1)}.
+  Opaque = #{realm => Realm, nonce => Nonce, qop => QopBin},
+  {ok, {binary:part(Challenge, 0, byte_size(Challenge)-1), Opaque}}.
 
 -spec get_A1_hash(Username, Realm, Password) -> Result when
   Username :: binary(),
@@ -144,11 +153,15 @@ get_qop(Qop) ->
     Qop -> Qop
   end.
 
+get_server_possible_qop(<<>>) -> [<<>>];
+get_server_possible_qop(<<"auth">>) -> [<<>>, <<"auth">>];
+get_server_possible_qop(<<"auth-int">>) -> [<<>>, <<"auth-int">>];
+get_server_possible_qop(<<"auth,auth-int">>) -> [<<>>, <<"auth">>, <<"auth-int">>].
+
 get_solvable_challenge(Response, Challenge) ->
   ServerQop = maps:get(qop, Challenge, <<>>),
   ClientQop = maps:get(qop, Response, <<>>),
-  PossibleServerQop = [<<>> | binary:split(binary:replace(ServerQop, <<" ">>, <<>>, [global]), <<",">>)],
-  case lists:member(ClientQop, PossibleServerQop) of
+  case lists:member(ClientQop, get_server_possible_qop(ServerQop)) of
     false -> {error, bad_qop};
     true -> try_merge_response_and_challenge(Response, maps:without([qop], Challenge))
   end.
@@ -161,16 +174,16 @@ try_merge_response_and_challenge(Response, Challenge) ->
   end.
 
 get_realm_line(Realm) ->
-  <<"realm=\"", Realm/binary, "\",">>.
+  {<<"realm=\"", Realm/binary, "\",">>, Realm}.
 
 get_nonce_line() ->
   {_Nc, Nonce} = erldigest_nonce_generator:generate(),
-  <<"nonce=\"", Nonce/binary, "\",">>.
+  {<<"nonce=\"", Nonce/binary, "\",">>, Nonce}.
 
 get_qop_line(Qop) ->
   case Qop of
     none -> <<>>;
-    auth -> <<"qop=\"auth\",">>;
-    auth_int -> <<"qop=\"auth-int\",">>;
-    both -> <<"qop=\"auth,auth-int\",">>
+    auth -> {<<"qop=\"auth\",">>, <<"auth">>};
+    auth_int -> {<<"qop=\"auth-int\",">>, <<"auth-int">>};
+    both -> {<<"qop=\"auth,auth-int\",">>, <<"auth,auth-int">>}
   end.

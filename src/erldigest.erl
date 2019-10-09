@@ -3,6 +3,7 @@
 -export([calculate_response/5,
          validate_response/5,
          generate_challenge/2,
+         challenge_to_binary/1,
          get_A1_hash/3,
          get_A1_hash/4]).
 
@@ -10,9 +11,8 @@
 -type qop() :: none | auth | auth_int | both.
 -type algorithm() :: md5 | sha256.
 -type challenge() :: erldigest_challenge:challenge().
--type opaque() :: erldigest_challenge:opaque().
 
--export_type([challenge/0, opaque/0]).
+-export_type([challenge/0]).
 
 %%%===================================================================
 %%% API
@@ -39,7 +39,7 @@ calculate_response(Method, Uri, Headers, Username, Password) ->
   Method :: method(),
   Uri :: binary(),
   ClientResponse :: binary(),
-  ServerResponse :: binary() | opaque(),
+  ServerResponse :: binary() | challenge(),
   HA1 :: binary(),
   Result :: {ok, boolean()} | {error, Reason::term()}.
 validate_response(Method, Uri, ClientResponse, <<ServerResponse/binary>>, HA1) ->
@@ -66,16 +66,23 @@ validate_response(Method, Uri, ClientResponse, ServerResponse, HA1) when is_map(
 -spec generate_challenge(Realm, Qop) -> Result when
   Realm :: binary(),
   Qop :: qop(),
-  Result :: {ok, {binary(), Opaque :: term()}} | {error, Reason::term()}.
+  Result :: {ok, Challenge :: challenge()} | {error, Reason::term()}.
 generate_challenge(Realm, Qop) ->
-  {RealmLine, Realm} = get_realm_line(Realm),
-  {NonceLine, Nonce} = get_nonce_line(),
-  {QopLine, QopBin} = get_qop_line(Qop),
-  Challenge = <<"Digest ", RealmLine/binary,
-                           NonceLine/binary,
-                           QopLine/binary>>,
-  Opaque = #{realm => Realm, nonce => Nonce, qop => QopBin},
-  {ok, {binary:part(Challenge, 0, byte_size(Challenge)-1), Opaque}}.
+  {_Nc, Nonce} = erldigest_nonce_generator:generate(),
+  Challenge = #{realm => Realm, nonce => Nonce, qop => get_challenge_qop(Qop)},
+  {ok, Challenge}.
+
+-spec challenge_to_binary(Challenge) -> Result when
+  Challenge :: challenge(),
+  Result :: {ok, binary()} | {error, Reason::term()}.
+challenge_to_binary(#{qop := Qop, realm := Realm, nonce := Nonce} = _Challenge) ->
+  RealmLine = get_realm_line(Realm),
+  NonceLine = get_nonce_line(Nonce),
+  QopLine = get_qop_line(Qop),
+  ChallengeBin = <<"Digest ", RealmLine/binary,
+                              NonceLine/binary,
+                              QopLine/binary>>,
+  {ok, binary:part(ChallengeBin, 0, byte_size(ChallengeBin)-1)}.
 
 -spec get_A1_hash(Username, Realm, Password) -> Result when
   Username :: binary(),
@@ -174,16 +181,19 @@ try_merge_response_and_challenge(Response, Challenge) ->
   end.
 
 get_realm_line(Realm) ->
-  {<<"realm=\"", Realm/binary, "\",">>, Realm}.
+  <<"realm=\"", Realm/binary, "\",">>.
 
-get_nonce_line() ->
-  {_Nc, Nonce} = erldigest_nonce_generator:generate(),
-  {<<"nonce=\"", Nonce/binary, "\",">>, Nonce}.
+get_nonce_line(Nonce) ->
+  <<"nonce=\"", Nonce/binary, "\",">>.
 
 get_qop_line(Qop) ->
+  <<"qop=\"", Qop/binary, "\",">>.
+
+-spec get_challenge_qop(qop()) -> binary().
+get_challenge_qop(Qop) ->
   case Qop of
     none -> <<>>;
-    auth -> {<<"qop=\"auth\",">>, <<"auth">>};
-    auth_int -> {<<"qop=\"auth-int\",">>, <<"auth-int">>};
-    both -> {<<"qop=\"auth,auth-int\",">>, <<"auth,auth-int">>}
+    auth -> <<"auth">>;
+    auth_int -> <<"auth-int">>;
+    both -> <<"auth,auth-int">>
   end.
